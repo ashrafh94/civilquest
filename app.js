@@ -46,9 +46,10 @@ function initFirebase(){
   if (initing) return initing;
   initing = (async () => {
     try {
-      if (!firebase.apps.length) firebase.initializeApp(CONFIG.firebase);
-      const cred = await firebase.auth().signInAnonymously();
-      FB.uid = cred.user.uid; FB.db = firebase.firestore(); FB.ready = true; FB.error = null;
+      // A separate Firebase app instance keeps the student sign-in apart from an instructor's portal sign-in in the same browser
+      const fa = firebase.apps.find(x=>x.name==='student') || firebase.initializeApp(CONFIG.firebase, 'student');
+      const cred = await fa.auth().signInAnonymously();
+      FB.uid = cred.user.uid; FB.db = fa.firestore(); FB.ready = true; FB.error = null;
       flushPending(); return true;
     } catch(e){ FB.error = e; updateSendStatus(); return false; }
     finally { initing = null; }
