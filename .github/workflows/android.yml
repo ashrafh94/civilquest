@@ -41,6 +41,8 @@ jobs:
 
       - name: Create Android project, icons and splash screens
         run: |
+          mkdir -p assets
+          for f in icon-only.png icon-foreground.png icon-background.png splash.png splash-dark.png; do if [ -f "$f" ]; then cp "$f" assets/; fi; done
           npx cap add android
           npx capacitor-assets generate --android --iconBackgroundColor '#1F6CB0' --splashBackgroundColor '#EAF0F3' --splashBackgroundColorDark '#0D171E'
           npx cap sync android
