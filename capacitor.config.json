@@ -1,0 +1,7 @@
+{
+  "appId": "com.convironment.civilquest",
+  "appName": "CivilQuest",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#EAF0F3" }
+}

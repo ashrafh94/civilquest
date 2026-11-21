@@ -1,5 +1,8 @@
 // ===== Platform app: role choice, class join, courses, chapters, levels =====
 const APP = (typeof CONFIG!=='undefined' && CONFIG.appName) || 'CivilQuest';
+// Running inside the Android/iOS app (Capacitor) rather than a browser
+const NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform==='function' && window.Capacitor.isNativePlatform());
+const footer = () => `<p class="note footer">© ${new Date().getFullYear()} Convironment, LLC · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>`;
 const app = document.getElementById('app');
 const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const starStr = (n, of=3) => Array.from({length:of},(_,i)=>`<span class="star ${i<n?'':'off'}">★</span>`).join('');
@@ -121,7 +124,7 @@ function renderRole(){
       <button class="role" id="r-student" type="button"><span class="roleicon" aria-hidden="true"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 4 2 9l10 5 10-5-10-5zm-6 7.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.5l-6 3-6-3z" fill="currentColor"/></svg></span><b>I’m a student</b><span>Free. Play the courses and send results to your instructor’s class.</span></button>
       <button class="role" id="r-instructor" type="button"><span class="roleicon" aria-hidden="true"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M4 4h16v12H4zM2 18h20v2H2zM7 13l3-3 2 2 4-4 1.5 1.5L12 15l-2-2-1.5 1.5z" fill="currentColor"/></svg></span><b>I’m an instructor</b><span>Create classes, share a class code, and see results live on the web.</span></button>
     </div>
-  </section>`;
+  </section>${footer()}`;
   document.getElementById('r-student').onclick=()=>{ PROFILE = Object.assign({}, PROFILE||{}, {role:'student'}); saveProfile(); (PROFILE.name ? renderCourses() : renderJoin()); };
   document.getElementById('r-instructor').onclick=renderInstructor;
 }
@@ -139,8 +142,9 @@ function renderInstructor(){
       <li>Create a class and get its class code.</li>
       <li>Give students the code. Their results appear on your dashboard as they play.</li>
     </ol>
-    <a class="btn send" href="${esc(url)}" target="_blank" rel="noopener">Open the instructor portal</a>
-    <p class="note">Portal address: <span class="mono">${esc(url.replace(/^https?:\/\//,''))}</span></p>
+    ${NATIVE ? `<p class="note">Open the ${esc(APP)} instructor portal in a web browser on your computer.</p>`
+      : `<a class="btn send" href="${esc(url)}" target="_blank" rel="noopener">Open the instructor portal</a>
+    <p class="note">Portal address: <span class="mono">${esc(url.replace(/^https?:\/\//,''))}</span></p>`}
     <button class="linkbtn" id="tryst" type="button">Try the student app instead</button>
   </section>`;
   wireHeader({label:'Back', go:renderRole});
@@ -214,7 +218,7 @@ function renderCourses(){
       return `<button class="course" data-c="${c.id}" type="button"><span class="eyebrow">${esc(c.field)}</span><h3>${esc(c.title)}</h3><p>${esc(c.blurb)}</p>
         <span class="row coursemeta"><span>${c.chapters.length} chapters · ${c.levels.length} levels</span><span>${starStr(1,1)} ${got} / ${c.levels.length*3}</span></span></button>`; }).join('')}
     ${soon.map(t=>`<div class="course soon" aria-disabled="true"><span class="eyebrow">Coming soon</span><h3>${t}</h3></div>`).join('')}
-  </div>`;
+  </div>${footer()}`;
   wireHeader(); wireInstall();
   app.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{ if(openCourse(b.dataset.c)) renderChapters(); });
 }
@@ -541,7 +545,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferr
 window.addEventListener('appinstalled', () => { deferredInstall = null; try { localStorage.setItem('cq-install-hide','1'); } catch(e){} if (view==='courses') renderCourses(); });
 
 function installBanner(){
-  if (isStandalone() || installDismissed()) return '';
+  if (NATIVE || isStandalone() || installDismissed()) return '';
   if (deferredInstall) return `<div class="install"><img src="icon-192.png" alt="" width="44" height="44"><div class="install-text"><b>Install ${esc(APP)}</b><span>Add it to your home screen. It opens like an app and works offline.</span></div><div class="row"><button class="btn" id="installbtn" type="button">Install</button><button class="linkbtn" id="installhide" type="button">Not now</button></div></div>`;
   if (isIOS()) return `<div class="install"><img src="icon-192.png" alt="" width="44" height="44"><div class="install-text"><b>Add ${esc(APP)} to your home screen</b><span>In Safari, tap the Share button <span aria-hidden="true">(□↑)</span>, then <b>Add to Home Screen</b>.</span></div><div class="row"><button class="linkbtn" id="installhide" type="button">Got it</button></div></div>`;
   return '';
@@ -552,10 +556,18 @@ function wireInstall(){
   const h=document.getElementById('installhide');
   if (h) h.onclick = () => { try { localStorage.setItem('cq-install-hide','1'); } catch(e){} renderCourses(); };
 }
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+if (!NATIVE && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
 
+
+// ---- Android back button: go back a screen, or leave the app from the first screen ----
+if (NATIVE && window.Capacitor.Plugins && window.Capacitor.Plugins.App){
+  window.Capacitor.Plugins.App.addListener('backButton', () => {
+    const b = document.getElementById('backbtn');
+    if (b) b.click(); else window.Capacitor.Plugins.App.exitApp();
+  });
+}
 
 // ---- Start ----
 (function boot(){

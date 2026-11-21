@@ -1,0 +1,78 @@
+# Builds the CivilQuest Android app in the cloud whenever the main branch changes
+# (or when you press "Run workflow" on the Actions tab).
+#
+# Always produces:   CivilQuest-test-apk   -> install directly on any Android phone for testing
+# When the four signing secrets exist (see README), also produces:
+#                    CivilQuest-play-bundle -> the signed .aab file you upload to Google Play
+name: Android app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install app tools
+        run: npm install --no-audit --no-fund
+
+      - name: Prepare app files (bundles the Firebase SDK for offline start)
+        run: node scripts/build-www.mjs
+
+      - name: Create Android project, icons and splash screens
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android --iconBackgroundColor '#1F6CB0' --splashBackgroundColor '#EAF0F3' --splashBackgroundColorDark '#0D171E'
+          npx cap sync android
+
+      - name: Set version number from the build count
+        run: |
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
+
+      - name: Build test APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CivilQuest-test-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Build signed Google Play bundle
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        working-directory: android
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/upload.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        with:
+          name: CivilQuest-play-bundle
+          path: android/app/build/outputs/bundle/release/app-release.aab

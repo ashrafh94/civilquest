@@ -199,6 +199,9 @@ function renderClass(c){
         <span class="note">Students enter this code in the ${esc(APP)} app, or scan the QR code.</span>
         <div class="codebox"><code id="jl">${esc(link)}</code><button class="btn ghost" id="copyl" type="button">Copy link</button></div>
         <div class="row"><span class="pill ${c.active===false?'off':''}">${c.active===false?'Closed to new results':'Open'}</span><button class="linkbtn" id="toggle" type="button">${c.active===false?'Reopen class':'Close class'}</button></div>
+        <div class="row"><button class="linkbtn" id="del" type="button" style="color:var(--bad)">Delete class and results…</button></div>
+        <div id="delconfirm" hidden class="fb bad"><p style="margin:0 0 8px">This permanently deletes <b>${esc(c.name)}</b> and every student result in it. It can’t be undone. Download the results first if you need them.</p>
+          <div class="row"><button class="btn danger" id="delyes" type="button">Delete permanently</button><button class="btn ghost" id="delno" type="button">Cancel</button></div></div>
       </div>
     </div>
   </section>
@@ -210,6 +213,16 @@ function renderClass(c){
   $('copyl').onclick=async()=>{ try{ await navigator.clipboard.writeText(link); $('copyl').textContent='Copied'; }catch(e){ const r=document.createRange(); r.selectNodeContents($('jl')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); } };
   $('toggle').onclick=async()=>{ try { await db.collection('classes').doc(c.code).update({active: c.active===false}); c.active = c.active===false; renderClass(c); } catch(e){ $('status').textContent='Could not change the class: '+(e.message||e.code); } };
   $('dl').onclick=downloadCsv;
+  $('del').onclick=()=>{ $('delconfirm').hidden=false; };
+  $('delno').onclick=()=>{ $('delconfirm').hidden=true; };
+  $('delyes').onclick=async()=>{ $('delyes').disabled=true; $('delyes').textContent='Deleting…';
+    try {
+      if (unsub){ unsub(); unsub=null; }
+      const snap = await db.collection('attempts').where('ownerUid','==',USER.uid).where('classCode','==',c.code).get();
+      for (let i=0;i<snap.docs.length;i+=400){ const b=db.batch(); snap.docs.slice(i,i+400).forEach(d=>b.delete(d.ref)); await b.commit(); }
+      await db.collection('classes').doc(c.code).delete();
+      renderHome();
+    } catch(e){ $('status').textContent='Could not delete the class: '+(e.message||e.code); $('delyes').disabled=false; $('delyes').textContent='Delete permanently'; } };
   if (unsub) unsub();
   unsub = db.collection('attempts').where('ownerUid','==',USER.uid).where('classCode','==',c.code).onSnapshot(snap=>{
     ROWS = snap.docs.map(d=>{ const x=d.data(); return {name:String(x.name||'').trim()||'Student', course:x.course, chapter:x.chapter, level:x.level|0, stars:x.stars|0, mistakes:x.mistakes|0, slips:x.slips||{}, at:x.at&&x.at.toDate?x.at.toDate():null}; });

@@ -18,6 +18,8 @@ A gamified learning platform for civil engineering.
 | `config.js` | Settings: app name, addresses, admin account, Firebase |
 | `firestore.rules` | Security rules (also keeps the original Condenser Lab working) |
 | `manifest.webmanifest`, `sw.js`, `icon-*.png`, `apple-touch-icon.png` | Install-to-home-screen and offline support |
+| `privacy.html`, `terms.html` | Privacy policy and terms of use (Convironment, LLC) |
+| `package.json`, `capacitor.config.json`, `scripts/`, `assets/`, `.github/workflows/android.yml` | Phone-app packaging and the automatic Android build |
 
 ## Setup
 
@@ -37,6 +39,19 @@ It uses the same Firebase project as Condenser Lab, in separate collections, so 
 | Instructors with an invite code | Free trial for the number of days on the code |
 | Instructors without a code | Account is created, but they can't create classes until they subscribe |
 | You (admin, set in `config.js` and `firestore.rules`) | Full access, plus invite codes |
+
+## Phone apps (Android now, iPhone next)
+
+The same app is packaged for the stores with Capacitor (`capacitor.config.json`, app ID `com.convironment.civilquest`). The game files and Firebase SDK are bundled inside the app, so it opens offline. Inside the store apps, the instructor screen tells instructors to use the portal in a web browser but has no sign-up or payment link (store rules), there's no install banner, and the Android back button moves back one screen.
+
+**Automatic Android builds:** every change pushed to `main` runs the **Android app** workflow (GitHub → Actions tab). Each run produces:
+
+- **CivilQuest-test-apk**: download it from the run page, unzip it, and open the `.apk` on an Android phone to install it for testing (allow "install unknown apps" when asked). It uses the same Firebase, so classes and results work.
+- **CivilQuest-play-bundle**: the signed `.aab` for Google Play. This appears only once the signing secrets are added: under Settings → Secrets and variables → Actions, add `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep the keystore file and passwords safe: every future update must be signed with the same key.
+
+The app targets Android 16 (API 36), as Google Play requires for new apps.
+
+**Store listing basics:** category Education; audience 13+; privacy policy URL `https://ashrafh94.github.io/civilquest/privacy.html`; data collected: name (entered by the user), app activity (level results), device or other IDs (anonymous sign-in ID); no ads; data encrypted in transit; deletion on request.
 
 ## Adding paid subscriptions later
 

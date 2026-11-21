@@ -200,3 +200,7 @@ button.course:hover{border-color:var(--cold)}
 .live i{width:8px;height:8px;border-radius:50%;background:var(--good);animation:pulse 1.6s infinite}
 @keyframes pulse{50%{opacity:.3}}
 @media (prefers-reduced-motion:reduce){.live i{animation:none}}
+
+.footer{text-align:center;margin-top:8px}
+.footer a{color:var(--muted)}
+.danger{border-color:var(--bad);color:var(--bad);background:transparent}
