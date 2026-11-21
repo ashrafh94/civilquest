@@ -34,7 +34,7 @@ function buildLabels(){
 }
 
 // ---- Firebase: students sign in anonymously; results go to their instructor's class ----
-const FB = { ready:false, db:null, uid:null, error:null };
+const FB = { ready:false, db:null, uid:null, error:null, refused:false };
 const fbConfigured = () => typeof CONFIG!=='undefined' && CONFIG.firebase && CONFIG.firebase.apiKey && !/PASTE/.test(CONFIG.firebase.apiKey) && typeof firebase!=='undefined';
 let PENDING = store.get('pending', []) || [];
 const savePending = () => store.set('pending', PENDING);
@@ -58,6 +58,7 @@ function initFirebase(){
 }
 
 function queueResult(r){
+  FB.refused = false;
   PENDING.push({id: Date.now().toString(36)+Math.random().toString(36).slice(2,7), ...r});
   savePending(); flushPending();
 }
@@ -75,7 +76,7 @@ async function flushPending(){
       });
       PENDING.shift(); savePending();
     } catch(e){
-      if (e && e.code === 'permission-denied'){ PENDING.shift(); savePending(); continue; }   // already saved, or class closed
+      if (e && e.code === 'permission-denied'){ PENDING.shift(); savePending(); FB.refused = true; continue; }   // class closed (or already saved)
       FB.error = e; break;
     }
   }
@@ -88,6 +89,7 @@ setInterval(retry, 20000);
 function sendStatusHtml(){
   if (!PROFILE || !PROFILE.classCode) return `<p class="note">Practice mode. Join a class to send your results to an instructor.</p>`;
   if (!fbConfigured()) return `<p class="note">Saving isn’t set up on this copy of the app.</p>`;
+  if (!PENDING.length && FB.refused) return `<p class="fb mid">${esc(PROFILE.className||'Your class')} isn’t accepting results right now. Your instructor may have closed it. Your stars are still saved on this phone.</p>`;
   if (!PENDING.length) return `<p class="fb ok">Saved. ${esc(PROFILE.className||'Your class')} has this result.</p>`;
   if (flushing || (!FB.ready && !FB.error)) return `<p class="fb hint">Saving your result…</p>`;
   return `<p class="fb mid">No connection right now. Your result is kept on this phone and will send automatically when you’re back online.</p>`;
