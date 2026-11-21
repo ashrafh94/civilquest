@@ -1,0 +1,128 @@
+rules_version = '2';
+
+// Security rules for CivilQuest AND the original Condenser Lab (same Firebase project).
+//
+// CivilQuest
+//   invites/{code}       created by the admin; an instructor marks one as used when activating a trial
+//   instructors/{uid}    one profile per instructor; plan status can only become 'trial' with a valid invite
+//   classes/{code}       created by instructors with an active plan; students can look up a code
+//   attempts/{id}        students add results to an open class; only that class's instructor can read them
+//
+// Condenser Lab (original game)
+//   results/{id}         unchanged
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.uid == 'Nt7TekxbV5e6gRcInxQmBZhWcD53'; }
+    function instructorDoc(uid) { return /databases/$(database)/documents/instructors/$(uid); }
+    function inviteDoc(code) { return /databases/$(database)/documents/invites/$(code); }
+    function classDoc(code) { return /databases/$(database)/documents/classes/$(code); }
+
+    // Paid (Stripe extension custom claim), invited trial still running, or admin
+    function instructorActive() {
+      return isAdmin()
+        || (signedIn() && request.auth.token.get('stripeRole', '') == 'instructor')
+        || (signedIn() && exists(instructorDoc(request.auth.uid))
+            && get(instructorDoc(request.auth.uid)).data.status == 'trial'
+            && get(instructorDoc(request.auth.uid)).data.trialEnds > request.time);
+    }
+
+    // A trial may only be granted by consuming an unused invite in the same write
+    function validTrial(d) {
+      return d.status == 'trial' && d.invite is string
+        && exists(inviteDoc(d.invite))
+        && get(inviteDoc(d.invite)).data.usedBy == null
+        && getAfter(inviteDoc(d.invite)).data.usedBy == request.auth.uid
+        && d.trialEnds is timestamp
+        && d.trialEnds <= request.time + duration.value(get(inviteDoc(d.invite)).data.trialDays, 'd');
+    }
+
+    // ---------- CivilQuest ----------
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list, create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && resource.data.usedBy == null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy', 'usedAt'])
+            && request.resource.data.usedBy == request.auth.uid
+            && getAfter(instructorDoc(request.auth.uid)).data.invite == code);
+    }
+
+    match /instructors/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'institution', 'email', 'createdAt', 'status', 'invite', 'trialEnds'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.institution is string && request.resource.data.institution.size() <= 120
+        && (request.resource.data.status == 'none' || validTrial(request.resource.data));
+      allow update: if signedIn() && request.auth.uid == uid && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'institution'])
+          || (resource.data.status != 'trial'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'invite', 'trialEnds'])
+              && validTrial(request.resource.data)));
+      allow update, delete: if isAdmin();
+    }
+
+    match /classes/{code} {
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if instructorActive()
+        && request.resource.data.keys().hasOnly(['ownerUid', 'name', 'course', 'active', 'createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.course is string && request.resource.data.active == true
+        && code.size() >= 6 && code.size() <= 12;
+      allow update: if signedIn() && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active']);
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /attempts/{id} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['classCode', 'ownerUid', 'name', 'course', 'chapter', 'level', 'stars', 'mistakes', 'slips', 'uid', 'v', 'at'])
+        && request.resource.data.classCode is string
+        && exists(classDoc(request.resource.data.classCode))
+        && get(classDoc(request.resource.data.classCode)).data.active == true
+        && request.resource.data.ownerUid == get(classDoc(request.resource.data.classCode)).data.ownerUid
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
+        && request.resource.data.course is string && request.resource.data.chapter is string
+        && request.resource.data.level is int && request.resource.data.level >= 1 && request.resource.data.level <= 500
+        && request.resource.data.stars is int && request.resource.data.stars >= 0 && request.resource.data.stars <= 3
+        && request.resource.data.mistakes is int && request.resource.data.mistakes >= 0 && request.resource.data.mistakes <= 1000
+        && request.resource.data.slips is map && request.resource.data.slips.size() <= 40
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow read, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---------- Condenser Lab (original game) ----------
+    function isTeacher() {
+      return request.auth != null && request.auth.uid == 'Nt7TekxbV5e6gRcInxQmBZhWcD53';
+    }
+
+    function validResult(d) {
+      return d.keys().hasOnly(['sid', 'level', 'stars', 'mistakes', 'slips', 'classCode', 'uid', 'v', 'at'])
+        && d.sid is string && d.sid.size() > 0 && d.sid.size() <= 40
+        && d.level is int && d.level >= 1 && d.level <= 50
+        && d.stars is int && d.stars >= 0 && d.stars <= 3
+        && d.mistakes is int && d.mistakes >= 0 && d.mistakes <= 1000
+        && d.slips is map && d.slips.size() <= 40
+        && d.classCode is string && d.classCode.size() <= 60
+        && d.uid == request.auth.uid
+        && d.at == request.time;
+    }
+
+    match /results/{resultId} {
+      allow create: if request.auth != null && validResult(request.resource.data);
+      allow read, delete: if isTeacher();
+      allow update: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
