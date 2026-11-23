@@ -298,6 +298,7 @@ function schematic(){
 
 function chapterArt(){
   const L=S.L, a=L.art;
+  if (COURSE.art && typeof COURSE.art[a]==='function') return COURSE.art[a](L);
   if (a==='warm') return `<svg viewBox="0 0 360 150" role="img" aria-label="Carbon adsorber bed">
     <line x1="10" y1="75" x2="100" y2="75" stroke="var(--hot)" stroke-width="7" class="flow"/><line x1="260" y1="75" x2="350" y2="75" stroke="var(--cold)" stroke-width="7" class="flow"/>
     <rect x="100" y="30" width="160" height="90" rx="10" fill="var(--bg)" stroke="var(--ink)" stroke-width="2"/>
@@ -421,7 +422,7 @@ const slip = tag => { S.slips[tag] = (S.slips[tag]||0) + 1; };
 function wire(){
   wireHeader({label:'Chapter', go:()=>renderChapter(S.L.ch)});
   if (S.finished){ document.getElementById('again').onclick=()=>startLevel(S.L.id);
-    const nx=document.getElementById('nextlvl'); if(nx) nx.onclick=()=>startLevel(S.L.id+1);
+    const nx=document.getElementById('nextlvl'); const nl=nextLevelOf(S.L); if(nx && nl) nx.onclick=()=>startLevel(nl.id);
     document.getElementById('map2').onclick=()=>renderChapter(S.L.ch);
     wireCopy();
     return; }
@@ -518,6 +519,10 @@ function pickOption(st, o){
   app.querySelector(`[data-o="${idx}"]`)?.classList.add(o.r==='ok'?'picked-ok':o.r==='mid'?'picked-mid':'picked-bad');
 }
 
+// Levels in play order: chapter by chapter, in the order the course lists them
+function orderedLevels(){ return COURSE.chapters.flatMap(ch=>COURSE.levels.filter(l=>l.ch===ch.id)); }
+function nextLevelOf(L){ const o=orderedLevels(); return o[o.indexOf(L)+1] || null; }
+
 function finish(){
   const n = S.mistakes===0?3:S.mistakes<=2?2:1;
   stars[S.L.id]=Math.max(stars[S.L.id]||0,n); saveStars();
@@ -527,7 +532,7 @@ function finish(){
 }
 
 function resultPanel(){
-  const nextL = COURSE.levels.find(l=>l.id===S.L.id+1); const hasNext = !!nextL;
+  const nextL = nextLevelOf(S.L); const hasNext = !!nextL;
   const nextLabel = nextL && nextL.ch!==S.L.ch ? 'Next chapter' : 'Next level';
   return `<p class="eyebrow">Level complete</p><div class="bigstars">${starStr(S.earned)}</div>
     <p class="prompt">${S.mistakes===0?'Clean run. No mistakes.':`${S.mistakes} ${S.mistakes===1?'slip':'slips'} along the way.`}</p>
